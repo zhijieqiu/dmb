@@ -1,4 +1,9 @@
+#author: jackqiu
+
 import tensorflow as tf
+from tensorflow.contrib import layers
+
+layers.fully_connected
 
 
 def line_multiply(input, dig_nums):

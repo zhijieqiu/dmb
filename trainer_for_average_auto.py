@@ -1,3 +1,4 @@
+#author: jackqiu
 import tensorflow as tf
 import numpy as np
 import os
@@ -6,27 +7,12 @@ import datetime
 from tfRecord import batch_iter
 from average_onehot2 import AOModel
 
-# Data loading params
-tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
-tf.flags.DEFINE_string("positive_data_file", "./data/rt-polaritydata/rt-polarity.pos",
-                       "Data source for the positive data.")
-tf.flags.DEFINE_string("negative_data_file", "./data/rt-polaritydata/rt-polarity.neg",
-                       "Data source for the negative data.")
-
-# Model Hyperparameters
-tf.flags.DEFINE_integer("embedding_dim", 128, "Dimensionality of character embedding (default: 128)")
-tf.flags.DEFINE_string("filter_sizes", "3,4,5", "Comma-separated filter sizes (default: '3,4,5')")
-tf.flags.DEFINE_integer("num_filters", 128, "Number of filters per filter size (default: 128)")
-tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (default: 0.5)")
-tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularization lambda (default: 0.0)")
-
 # Training parameters
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
 tf.flags.DEFINE_integer("num_epochs", 200, "Number of training epochs (default: 200)")
-tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
-tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
+
 tf.flags.DEFINE_integer("num_checkpoints", 5, "Number of checkpoints to store (default: 5)")
-tf.flags.DEFINE_integer("senquence_length", 40, "sentence max words (default:40)")
+
 # Misc Parameters
 tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow device soft device placement")
 tf.flags.DEFINE_boolean("log_device_placement", False, "Log placement of ops on devices")
@@ -46,38 +32,39 @@ for attr, value in sorted(FLAGS.__flags.items()):
 print("")
 
 
-def my_batch_iter(file_name, zero_index_id):
-    train_sequence = []
-    length = []
-    predict_labels = []
-    # age sex items length predict_label
-    with open(file_name, 'r') as reader:
-        for line in reader:
-            line = line.strip()
-            tokens = line.split("\t")
-            if len(tokens) != 5:
-                continue
+def my_batch_iter(file_name, zero_index_id, epoch=1):
+    for _ in range(epoch):
+        train_sequence = []
+        length = []
+        predict_labels = []
+        # age sex items length predict_label
+        with open(file_name, 'r') as reader:
+            for line in reader:
+                line = line.strip()
+                tokens = line.split("\t")
+                if len(tokens) != 5:
+                    continue
 
-            cur_items = [int(tokens[0]), int(tokens[1])]
-            tt = tokens[2].split(" ")
-            items = []
-            for t in tt:
-                if t != "":
-                    items.append(int(t))
-            if len(items) == 0:
-                items.append(zero_index_id)
-            length.append(len(items))
-            if len(items) < 5:
-                items.extend([zero_index_id] * (5 - len(items)))
-            cur_items.extend(items)
-            predict_labels.append(int(tokens[4]))
-            train_sequence.append(cur_items)
-            if len(predict_labels) == 1024:
-                # print train_sequence, length, predict_labels
-                yield train_sequence, length, predict_labels
-                train_sequence = []
-                length = []
-                predict_labels = []
+                cur_items = [int(tokens[0]), int(tokens[1])]
+                tt = tokens[2].split(" ")
+                items = []
+                for t in tt:
+                    if t != "":
+                        items.append(int(t))
+                if len(items) == 0:
+                    items.append(zero_index_id)
+                length.append(len(items))
+                if len(items) < 5:
+                    items.extend([zero_index_id] * (5 - len(items)))
+                cur_items.extend(items)
+                predict_labels.append(int(tokens[4]))
+                train_sequence.append(cur_items)
+                if len(predict_labels) == 1024:
+                    # print train_sequence, length, predict_labels
+                    yield train_sequence, length, predict_labels
+                    train_sequence = []
+                    length = []
+                    predict_labels = []
 
 
 def dev_batch(file_name, zero_index_id):
@@ -111,18 +98,21 @@ def dev_batch(file_name, zero_index_id):
 
 def read_embedding_file(filename):
     W = []
+    index = 0
     with open(filename, 'r') as reader:
         for line in reader:
             line = line.strip()
             tokens = line.split("\t")
             W.append([float(x) for x in tokens[1].split(":")])
+            index+=1
+            if index%100000 ==0:
+                print(index)
     return np.asarray(W)
 
 
 with tf.Graph().as_default():
     # generate_train(r'D:\Data\tmp\output_with_neg.txt') #generate a fade training list
-    session_conf = tf.ConfigProto(allow_soft_placement=FLAGS.allow_soft_placement,
-                                  log_device_placement=FLAGS.log_device_placement)
+    session_conf = tf.ConfigProto(allow_soft_placement=FLAGS.allow_soft_placement, log_device_placement=FLAGS.log_device_placement)
     sess = tf.Session(config=session_conf)
     vocab_size = 2974077
     max_length = 7
@@ -219,39 +209,13 @@ with tf.Graph().as_default():
             feed_dict=feed_dict
             )
 
-        with open("pcc", 'w') as pwriter:
-            for p in pcc:
-                pwriter.write(" ".join([str(x) for x in p]) + "\n")
-        with open("output", "w") as owriter:
-            for p in fco:
-                owriter.write(" ".join([str(x) for x in p]) + "\n")
-
-        with open("www.model_test", 'w') as writer_WWW:
-            for line in WWW:
-                output_line = " ".join([str(x) for x in line])
-                writer_WWW.write(output_line + "\n")
-            b_str = " ".join([str(b) for b in bbb])
-            writer_WWW.write(b_str + "\n")
-        print
-        "###########################\n#################################"
-
-        # print "####################"
-        # print WWW
-        # print "####################"
-
         for fc, dis, e in zip(fco, detail_input_s, exs):
-            # print fc
             print("_________________________________")
-            # print e
             print("*************************************")
-            # print item_lengths
-            # print tmp_embed_x_sequence
-            # print dig_il
             word_sim = np.dot(W, fc)
             word_sim_argsort = word_sim.argsort()[::-1]
             print("\t".join([str(x) for x in dis]))
             print([(reverse_item_dict[i], word_sim[i]) for i in word_sim_argsort[0:10 + 1]])
-
         time_str = datetime.datetime.now().isoformat()
         print("develop {}:  loss {}".format(time_str, loss))
 
@@ -282,47 +246,10 @@ with tf.Graph().as_default():
                     writer_WWW.write(output_line + "\n")
                 b_str = " ".join([str(b) for b in bbb])
                 writer_WWW.write(b_str + "\n")
-        # _ , step, summaries, loss,x_seq, item_lengths, tmp_embed_x_sequence, dig_il,emebd_x_s, sex_profile_info, age_profile_info,pcc, fco = sess.run(
-        #    [train_op, global_step, train_summary_op, model.loss,
-        #        model.input_x_sequence,
-        #        model.input_item_lengths,
-        #        model.tmp_embed_x_sequence,
-        #        model.dig_il,
-        #        model.embed_x_sequence,
-        #        model.sex_profile_info,
-        #        model.age_profile_info,
-        #        model.pcc,
-        #        model.fco],
-        #    feed_dict=feed_dict
-        # )
-        # with open("furesult.txt",'w') as mywriter:
-        #    mywriter.write("input_batch\n")
-        #    mywriter.write(str(input_batch)+"\n")
-        #    mywriter.write("x_seq\n")
-        #    mywriter.write(str(x_seq)+"\n")
-        #    mywriter.write("item_lengths\n")
-        #    mywriter.write(str(item_lengths)+"\n")
-        #    mywriter.write("tmp_embed_x_sequence\n")
-        #    mywriter.write(str(tmp_embed_x_sequence)+"\n")
-        #    mywriter.write("dig_il\n")
-        #    mywriter.write(str(dig_il)+"\n")
-        #    mywriter.write("embed_x_s\n")
-        #    mywriter.write(str(emebd_x_s)+"\n")
-        #    mywriter.write("sex_profile_info\n")
-        #    mywriter.write(str(sex_profile_info)+"\n")
-        #    mywriter.write("age_profile_info\n")
-        #    mywriter.write(str(age_profile_info)+"\n")
-        #    mywriter.write("pcc\n")
-        #    mywriter.write(str(pcc)+"\n")
-        #    mywriter.write("fco\n")
-        #    mywriter.write(str(fco)+"\n")
 
         time_str = datetime.datetime.now().isoformat()
         if step % 100 == 0:
             print("{}: step {}, loss {}".format(time_str, step, loss))
-        # print("{}: step {}, loss {}".format(time_str, step, loss))
-        # print(final_probability)
-        # print(inner_product)
         if writer:
             writer.add_summary(summaries, step)
 
@@ -330,7 +257,6 @@ with tf.Graph().as_default():
     sess.run(tf.global_variables_initializer())
     sess.run(model.embedding_init, feed_dict={model.embedding_placeholder: pretrained_embeddings})
     i_step = 0
-    # dev_input_s, dev_lengths, dev_predict_labels = dev_batch("../data/train_data.20180405.shuffle.tail")
     dev_input_s, dev_lengths, dev_predict_labels = dev_batch(FLAGS.dev_file_path, vocab_size)
     detail_input_s = []
     for x in dev_input_s:
